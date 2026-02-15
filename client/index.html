@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AI Receptionist Dashboard - SmileCare Orthodontics</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="container">
+    <!-- Header -->
+    <header>
+      <div class="header-content">
+        <h1>🦷 AI Receptionist Dashboard</h1>
+        <p class="subtitle">SmileCare Orthodontics - Demo System</p>
+      </div>
+      <div class="header-stats">
+        <div class="stat-card">
+          <span class="stat-label">Status</span>
+          <span class="stat-value status-active" id="systemStatus">● ONLINE</span>
+        </div>
+      </div>
+    </header>
+
+    <!-- Main Content -->
+    <main>
+      <!-- Stats Row -->
+      <section class="stats-section">
+        <div class="stat-box">
+          <div class="stat-icon">📅</div>
+          <div class="stat-info">
+            <h3 id="totalAppointments">0</h3>
+            <p>Total Appointments</p>
+          </div>
+        </div>
+        <div class="stat-box">
+          <div class="stat-icon">📞</div>
+          <div class="stat-info">
+            <h3 id="totalCalls">0</h3>
+            <p>Call Interactions</p>
+          </div>
+        </div>
+        <div class="stat-box">
+          <div class="stat-icon">⏰</div>
+          <div class="stat-info">
+            <h3 id="availableSlots">0</h3>
+            <p>Available Slots</p>
+          </div>
+        </div>
+        <div class="stat-box">
+          <div class="stat-icon">💬</div>
+          <div class="stat-info">
+            <h3 id="totalFAQs">10</h3>
+            <p>FAQ Responses</p>
+          </div>
+        </div>
+      </section>
+
+      <!-- Tabs -->
+      <div class="tabs">
+        <button class="tab-button active" onclick="showTab('appointments')">Appointments</button>
+        <button class="tab-button" onclick="showTab('calls')">Call Logs</button>
+        <button class="tab-button" onclick="showTab('faqs')">FAQs</button>
+        <button class="tab-button" onclick="showTab('info')">Clinic Info</button>
+      </div>
+
+      <!-- Tab Content: Appointments -->
+      <div id="appointments-tab" class="tab-content active">
+        <div class="section-header">
+          <h2>Scheduled Appointments</h2>
+          <button class="refresh-btn" onclick="loadAppointments()">🔄 Refresh</button>
+        </div>
+        <div id="appointmentsList" class="data-list">
+          <div class="loading">Loading appointments...</div>
+        </div>
+      </div>
+
+      <!-- Tab Content: Call Logs -->
+      <div id="calls-tab" class="tab-content">
+        <div class="section-header">
+          <h2>Recent Call Interactions</h2>
+          <button class="refresh-btn" onclick="loadCallLogs()">🔄 Refresh</button>
+        </div>
+        <div id="callLogsList" class="data-list">
+          <div class="loading">Loading call logs...</div>
+        </div>
+      </div>
+
+      <!-- Tab Content: FAQs -->
+      <div id="faqs-tab" class="tab-content">
+        <div class="section-header">
+          <h2>Frequently Asked Questions</h2>
+        </div>
+        <div id="faqsList" class="data-list">
+          <div class="loading">Loading FAQs...</div>
+        </div>
+      </div>
+
+      <!-- Tab Content: Clinic Info -->
+      <div id="info-tab" class="tab-content">
+        <div class="section-header">
+          <h2>Clinic Information</h2>
+        </div>
+        <div id="clinicInfo" class="clinic-info-container">
+          <div class="loading">Loading clinic information...</div>
+        </div>
+      </div>
+    </main>
+
+    <!-- Footer -->
+    <footer>
+      <p>AI Receptionist Demo System | Built with Vapi + Node.js</p>
+      <p class="demo-note">📍 This is a demo portfolio project showcasing AI voice integration</p>
+    </footer>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>

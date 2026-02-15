@@ -1,0 +1,311 @@
+// server/services/appointments.js
+// Business logic for appointment handling
+
+const dolphinAPI = require('./dolphinMock');
+const logger = require('../utils/logger');
+
+class AppointmentService {
+  
+  // Check availability for appointments
+  async checkAvailability(params) {
+    try {
+      const { date, preferredTime } = params;
+      
+      logger.info('Checking availability:', { date, preferredTime });
+      
+      // Get available slots from Dolphin
+      const slots = await dolphinAPI.getAvailableSlots(date);
+      
+      if (slots.length === 0) {
+        return {
+          success: false,
+          message: "I'm sorry, we don't have any available appointments on that date. Would you like to try a different date?",
+          availableSlots: []
+        };
+      }
+      
+      // Format slots for the AI to present
+      const formattedSlots = slots.map(slot => ({
+        date: slot.date,
+        time: this._formatTime(slot.time),
+        display: `${this._formatDate(slot.date)} at ${this._formatTime(slot.time)}`
+      }));
+      
+      return {
+        success: true,
+        message: `We have ${slots.length} available time slots.`,
+        availableSlots: formattedSlots,
+        data: slots
+      };
+      
+    } catch (error) {
+      logger.error('Check availability error:', error);
+      throw error;
+    }
+  }
+  
+  // Book a new appointment
+  async bookAppointment(params) {
+    try {
+      const {
+        patientName,
+        phone,
+        email,
+        date,
+        time,
+        appointmentType,
+        isNewPatient
+      } = params;
+      
+      logger.info('Booking appointment:', params);
+      
+      // Validate required fields
+      if (!patientName || !phone || !date || !time) {
+        return {
+          success: false,
+          message: "I need your name, phone number, and preferred date and time to book an appointment."
+        };
+      }
+      
+      // Validate phone format (basic check)
+      const cleanPhone = this._cleanPhoneNumber(phone);
+      if (!cleanPhone) {
+        return {
+          success: false,
+          message: "I need a valid phone number. Can you please provide your phone number?"
+        };
+      }
+      
+      // Create appointment in Dolphin
+      const appointment = await dolphinAPI.createAppointment({
+        patientName,
+        phone: cleanPhone,
+        email: email || '',
+        date,
+        time,
+        type: appointmentType || 'consultation',
+        isNewPatient: isNewPatient || false
+      });
+      
+      // Format confirmation message
+      const confirmationMessage = `Perfect! I've booked your ${appointmentType || 'appointment'} for ${this._formatDate(date)} at ${this._formatTime(time)}. You'll receive a confirmation text shortly at ${this._formatPhone(cleanPhone)}.`;
+      
+      // Add new patient instructions
+      let additionalInfo = '';
+      if (isNewPatient) {
+        additionalInfo = ' Since this is your first visit, please arrive 15 minutes early to complete our new patient forms. Don\'t forget to bring your insurance card and a valid ID.';
+      }
+      
+      return {
+        success: true,
+        message: confirmationMessage + additionalInfo,
+        appointment: {
+          id: appointment.id,
+          patientName: appointment.patientName,
+          date: this._formatDate(appointment.date),
+          time: this._formatTime(appointment.time),
+          type: appointment.type
+        }
+      };
+      
+    } catch (error) {
+      logger.error('Book appointment error:', error);
+      
+      if (error.message.includes('not available')) {
+        return {
+          success: false,
+          message: "I'm sorry, that time slot just became unavailable. Let me find other available times for you."
+        };
+      }
+      
+      throw error;
+    }
+  }
+  
+  // Find existing appointment by phone
+  async findAppointment(params) {
+    try {
+      const { phone, patientName } = params;
+      
+      if (!phone) {
+        return {
+          success: false,
+          message: "I need your phone number to look up your appointment."
+        };
+      }
+      
+      const cleanPhone = this._cleanPhoneNumber(phone);
+      const appointments = await dolphinAPI.findAppointmentByPhone(cleanPhone);
+      
+      if (appointments.length === 0) {
+        return {
+          success: false,
+          message: `I couldn't find any appointments under ${cleanPhone}. Can you verify your phone number?`,
+          appointments: []
+        };
+      }
+      
+      // Format appointments for AI to present
+      const formattedAppointments = appointments.map(apt => ({
+        id: apt.id,
+        date: this._formatDate(apt.date),
+        time: this._formatTime(apt.time),
+        type: apt.type,
+        display: `${apt.type} on ${this._formatDate(apt.date)} at ${this._formatTime(apt.time)}`
+      }));
+      
+      let message;
+      if (appointments.length === 1) {
+        const apt = formattedAppointments[0];
+        message = `I found your appointment: ${apt.display}.`;
+      } else {
+        message = `I found ${appointments.length} appointments for you.`;
+      }
+      
+      return {
+        success: true,
+        message,
+        appointments: formattedAppointments,
+        data: appointments
+      };
+      
+    } catch (error) {
+      logger.error('Find appointment error:', error);
+      throw error;
+    }
+  }
+  
+  // Reschedule existing appointment
+  async rescheduleAppointment(params) {
+    try {
+      const { appointmentId, newDate, newTime } = params;
+      
+      if (!appointmentId || !newDate || !newTime) {
+        return {
+          success: false,
+          message: "I need the appointment details and new date/time to reschedule."
+        };
+      }
+      
+      logger.info('Rescheduling appointment:', params);
+      
+      const appointment = await dolphinAPI.rescheduleAppointment(
+        appointmentId,
+        newDate,
+        newTime
+      );
+      
+      return {
+        success: true,
+        message: `Perfect! I've rescheduled your appointment to ${this._formatDate(newDate)} at ${this._formatTime(newTime)}. You'll receive a confirmation shortly.`,
+        appointment: {
+          id: appointment.id,
+          date: this._formatDate(appointment.date),
+          time: this._formatTime(appointment.time)
+        }
+      };
+      
+    } catch (error) {
+      logger.error('Reschedule appointment error:', error);
+      
+      if (error.message.includes('not available')) {
+        return {
+          success: false,
+          message: "I'm sorry, that new time slot is not available. Would you like me to suggest other available times?"
+        };
+      }
+      
+      if (error.message.includes('not found')) {
+        return {
+          success: false,
+          message: "I couldn't find that appointment. Can you verify the details?"
+        };
+      }
+      
+      throw error;
+    }
+  }
+  
+  // Cancel appointment
+  async cancelAppointment(params) {
+    try {
+      const { appointmentId, reason } = params;
+      
+      if (!appointmentId) {
+        return {
+          success: false,
+          message: "I need to know which appointment you'd like to cancel."
+        };
+      }
+      
+      logger.info('Cancelling appointment:', params);
+      
+      const appointment = await dolphinAPI.cancelAppointment(appointmentId);
+      
+      let message = `I've cancelled your appointment for ${this._formatDate(appointment.date)} at ${this._formatTime(appointment.time)}.`;
+      
+      // Suggest rebooking
+      message += ' Would you like to schedule a new appointment?';
+      
+      return {
+        success: true,
+        message,
+        appointment: {
+          id: appointment.id,
+          status: 'cancelled'
+        }
+      };
+      
+    } catch (error) {
+      logger.error('Cancel appointment error:', error);
+      
+      if (error.message.includes('not found')) {
+        return {
+          success: false,
+          message: "I couldn't find that appointment. Can you verify the details?"
+        };
+      }
+      
+      throw error;
+    }
+  }
+  
+  // Helper: Clean phone number
+  _cleanPhoneNumber(phone) {
+    if (!phone) return null;
+    // Remove all non-digit characters
+    const cleaned = phone.toString().replace(/\D/g, '');
+    // Must be 10 digits (US format) or return formatted version
+    if (cleaned.length === 10) {
+      return `${cleaned.slice(0, 3)}-${cleaned.slice(3, 6)}-${cleaned.slice(6)}`;
+    }
+    return null;
+  }
+  
+  // Helper: Format phone for display
+  _formatPhone(phone) {
+    const cleaned = phone.replace(/\D/g, '');
+    if (cleaned.length === 10) {
+      return `(${cleaned.slice(0, 3)}) ${cleaned.slice(3, 6)}-${cleaned.slice(6)}`;
+    }
+    return phone;
+  }
+  
+  // Helper: Format date for display
+  _formatDate(dateString) {
+    const date = new Date(dateString + 'T00:00:00');
+    const options = { weekday: 'long', month: 'long', day: 'numeric' };
+    return date.toLocaleDateString('en-US', options);
+  }
+  
+  // Helper: Format time for display
+  _formatTime(timeString) {
+    const [hours, minutes] = timeString.split(':');
+    const hour = parseInt(hours);
+    const ampm = hour >= 12 ? 'PM' : 'AM';
+    const displayHour = hour > 12 ? hour - 12 : (hour === 0 ? 12 : hour);
+    return `${displayHour}:${minutes} ${ampm}`;
+  }
+}
+
+module.exports = new AppointmentService();
