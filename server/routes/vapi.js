@@ -11,6 +11,17 @@ const config = require('../config/config');
 // Store call logs in memory (in production, use a database)
 const callLogs = [];
 
+function stringifyToolResult(result) {
+  if (typeof result === 'string') return result;
+  if (result == null) return 'No result';
+  try {
+    return JSON.stringify(result);
+  } catch (error) {
+    logger.error('Failed to stringify tool result:', error);
+    return String(result);
+  }
+}
+
 // Main webhook endpoint - Vapi sends requests here
 router.post('/webhook', async (req, res) => {
   try {
@@ -20,6 +31,11 @@ router.post('/webhook', async (req, res) => {
       messageType: message?.type,
       callId: call?.id
     });
+
+    // Vapi Tools payload format (new)
+    if (Array.isArray(req.body?.message?.toolCalls)) {
+      return await handleToolCalls(req, res);
+    }
 
     // Handle different message types from Vapi
     switch (message?.type) {
@@ -46,6 +62,59 @@ router.post('/webhook', async (req, res) => {
   }
 });
 
+// Handle tool calls from Vapi Tools (new format)
+async function handleToolCalls(req, res) {
+  const { message, call } = req.body;
+  const toolCalls = message?.toolCalls || [];
+
+  try {
+    const results = [];
+
+    for (const toolCall of toolCalls) {
+      const functionName = toolCall?.function?.name;
+      const parameters = toolCall?.function?.arguments || {};
+      const toolCallId = toolCall?.id;
+
+      logger.info(`Tool called: ${functionName}`, parameters);
+
+      let result;
+      try {
+        result = await executeFunction(functionName, parameters, call);
+      } catch (error) {
+        logger.error(`Tool ${functionName} failed:`, error);
+        result = {
+          success: false,
+          message: 'I apologize, but I encountered an error. Let me transfer you to our staff.',
+          escalate: true,
+          error: error.message
+        };
+      }
+
+      callLogs.push({
+        timestamp: new Date().toISOString(),
+        callId: call?.id,
+        function: functionName,
+        parameters,
+        result,
+        success: result?.success
+      });
+
+      results.push({
+        toolCallId,
+        result: stringifyToolResult(result)
+      });
+    }
+
+    // Vapi Tools expects a 200 response with results[]
+    return res.status(200).json({ results });
+  } catch (error) {
+    logger.error('Tool calls webhook error:', error);
+    return res.status(200).json({
+      results: []
+    });
+  }
+}
+
 // Handle function calls from Vapi
 async function handleFunctionCall(req, res) {
   const { message, call } = req.body;
@@ -55,43 +124,7 @@ async function handleFunctionCall(req, res) {
   logger.info(`Function called: ${functionName}`, parameters);
   
   try {
-    let result;
-    
-    switch (functionName) {
-      case 'check_availability':
-        result = await appointmentService.checkAvailability(parameters);
-        break;
-      
-      case 'book_appointment':
-        result = await appointmentService.bookAppointment(parameters);
-        break;
-      
-      case 'find_appointment':
-        result = await appointmentService.findAppointment(parameters);
-        break;
-      
-      case 'reschedule_appointment':
-        result = await appointmentService.rescheduleAppointment(parameters);
-        break;
-      
-      case 'cancel_appointment':
-        result = await appointmentService.cancelAppointment(parameters);
-        break;
-      
-      case 'get_faq':
-        result = await faqService.getFAQ(parameters);
-        break;
-      
-      case 'escalate_to_staff':
-        result = await handleEscalation(parameters, call);
-        break;
-      
-      default:
-        result = {
-          success: false,
-          message: `Unknown function: ${functionName}`
-        };
-    }
+    const result = await executeFunction(functionName, parameters, call);
     
     // Log the function call
     callLogs.push({
@@ -118,6 +151,37 @@ async function handleFunctionCall(req, res) {
         error: error.message
       }
     });
+  }
+}
+
+async function executeFunction(functionName, parameters, call) {
+  switch (functionName) {
+    case 'check_availability':
+      return await appointmentService.checkAvailability(parameters);
+
+    case 'book_appointment':
+      return await appointmentService.bookAppointment(parameters);
+
+    case 'find_appointment':
+      return await appointmentService.findAppointment(parameters);
+
+    case 'reschedule_appointment':
+      return await appointmentService.rescheduleAppointment(parameters);
+
+    case 'cancel_appointment':
+      return await appointmentService.cancelAppointment(parameters);
+
+    case 'get_faq':
+      return await faqService.getFAQ(parameters);
+
+    case 'escalate_to_staff':
+      return await handleEscalation(parameters, call);
+
+    default:
+      return {
+        success: false,
+        message: `Unknown function: ${functionName}`
+      };
   }
 }
 
