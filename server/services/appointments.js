@@ -32,7 +32,7 @@ class AppointmentService {
           }));
 
           return {
-            success: false,
+            success: true,
             message: normalizedDate
               ? "I'm sorry, we don't have any available appointments on that date. Here are the next available times."
               : "I couldn't find availability for that request. Here are the next available times.",
