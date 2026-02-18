@@ -66,6 +66,14 @@ class AppointmentService {
           message: "I need your name, phone number, and preferred date and time to book an appointment."
         };
       }
+
+      const normalizedTime = this._normalizeTimeInput(time);
+      if (!normalizedTime) {
+        return {
+          success: false,
+          message: "I couldn't understand that time. Please share the time like 9 AM, 2 PM, or 14:00."
+        };
+      }
       
       // Validate phone format (basic check)
       const cleanPhone = this._cleanPhoneNumber(phone);
@@ -82,13 +90,13 @@ class AppointmentService {
         phone: cleanPhone,
         email: email || '',
         date,
-        time,
+        time: normalizedTime,
         type: appointmentType || 'consultation',
         isNewPatient: isNewPatient || false
       });
       
       // Format confirmation message
-      const confirmationMessage = `Perfect! I've booked your ${appointmentType || 'appointment'} for ${this._formatDate(date)} at ${this._formatTime(time)}. You'll receive a confirmation text shortly at ${this._formatPhone(cleanPhone)}.`;
+      const confirmationMessage = `Perfect! I've booked your ${appointmentType || 'appointment'} for ${this._formatDate(date)} at ${this._formatTime(appointment.time)}. You'll receive a confirmation text shortly at ${this._formatPhone(cleanPhone)}.`;
       
       // Add new patient instructions
       let additionalInfo = '';
@@ -188,11 +196,19 @@ class AppointmentService {
       }
       
       logger.info('Rescheduling appointment:', params);
+
+      const normalizedNewTime = this._normalizeTimeInput(newTime);
+      if (!normalizedNewTime) {
+        return {
+          success: false,
+          message: "I couldn't understand that new time. Please share it like 9 AM, 2 PM, or 14:00."
+        };
+      }
       
       const appointment = await dolphinAPI.rescheduleAppointment(
         appointmentId,
         newDate,
-        newTime
+        normalizedNewTime
       );
       
       return {
@@ -305,6 +321,42 @@ class AppointmentService {
     const ampm = hour >= 12 ? 'PM' : 'AM';
     const displayHour = hour > 12 ? hour - 12 : (hour === 0 ? 12 : hour);
     return `${displayHour}:${minutes} ${ampm}`;
+  }
+
+  // Helper: Normalize user-provided time to HH:MM (24-hour)
+  _normalizeTimeInput(timeInput) {
+    if (!timeInput) return null;
+
+    let value = timeInput.toString().trim().toLowerCase();
+    value = value.replace(/\./g, '');
+    value = value.replace(/\s+/g, ' ');
+
+    // Already in HH:MM format
+    const hhmm = value.match(/^([01]?\d|2[0-3]):([0-5]\d)$/);
+    if (hhmm) {
+      const hour = hhmm[1].padStart(2, '0');
+      const minute = hhmm[2];
+      return `${hour}:${minute}`;
+    }
+
+    // H AM/PM or H:MM AM/PM
+    const ampm = value.match(/^(\d{1,2})(?::([0-5]\d))?\s*(am|pm)$/);
+    if (ampm) {
+      let hour = parseInt(ampm[1], 10);
+      const minute = ampm[2] || '00';
+      const meridiem = ampm[3];
+
+      if (hour < 1 || hour > 12) return null;
+      if (meridiem === 'am') {
+        if (hour === 12) hour = 0;
+      } else if (hour !== 12) {
+        hour += 12;
+      }
+
+      return `${String(hour).padStart(2, '0')}:${minute}`;
+    }
+
+    return null;
   }
 }
 
