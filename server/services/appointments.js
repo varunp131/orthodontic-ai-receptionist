@@ -10,13 +10,36 @@ class AppointmentService {
   async checkAvailability(params) {
     try {
       const { date, preferredTime } = params;
+      const normalizedDate = this._normalizeDateInput(date);
       
-      logger.info('Checking availability:', { date, preferredTime });
+      logger.info('Checking availability:', { date, normalizedDate, preferredTime });
       
       // Get available slots from Dolphin
-      const slots = await dolphinAPI.getAvailableSlots(date);
+      let slots = await dolphinAPI.getAvailableSlots(normalizedDate);
+      slots = this._filterSlotsByPreferredTime(slots, preferredTime);
       
       if (slots.length === 0) {
+        const fallbackSlots = this._filterSlotsByPreferredTime(
+          await dolphinAPI.getAvailableSlots(),
+          preferredTime
+        ).slice(0, 5);
+
+        if (fallbackSlots.length > 0) {
+          const formattedFallback = fallbackSlots.map(slot => ({
+            date: slot.date,
+            time: this._formatTime(slot.time),
+            display: `${this._formatDate(slot.date)} at ${this._formatTime(slot.time)}`
+          }));
+
+          return {
+            success: false,
+            message: normalizedDate
+              ? "I'm sorry, we don't have any available appointments on that date. Here are the next available times."
+              : "I couldn't find availability for that request. Here are the next available times.",
+            availableSlots: formattedFallback
+          };
+        }
+
         return {
           success: false,
           message: "I'm sorry, we don't have any available appointments on that date. Would you like to try a different date?",
@@ -58,9 +81,11 @@ class AppointmentService {
       } = params;
       
       logger.info('Booking appointment:', params);
+
+      const normalizedDate = this._normalizeDateInput(date);
       
       // Validate required fields
-      if (!patientName || !phone || !date || !time) {
+      if (!patientName || !phone || !normalizedDate || !time) {
         return {
           success: false,
           message: "I need your name, phone number, and preferred date and time to book an appointment."
@@ -89,14 +114,14 @@ class AppointmentService {
         patientName,
         phone: cleanPhone,
         email: email || '',
-        date,
+        date: normalizedDate,
         time: normalizedTime,
         type: appointmentType || 'consultation',
         isNewPatient: isNewPatient || false
       });
       
       // Format confirmation message
-      const confirmationMessage = `Perfect! I've booked your ${appointmentType || 'appointment'} for ${this._formatDate(date)} at ${this._formatTime(appointment.time)}. You'll receive a confirmation text shortly at ${this._formatPhone(cleanPhone)}.`;
+      const confirmationMessage = `Perfect! I've booked your ${appointmentType || 'appointment'} for ${this._formatDate(appointment.date)} at ${this._formatTime(appointment.time)}. You'll receive a confirmation text shortly at ${this._formatPhone(cleanPhone)}.`;
       
       // Add new patient instructions
       let additionalInfo = '';
@@ -193,8 +218,9 @@ class AppointmentService {
   async rescheduleAppointment(params) {
     try {
       const { appointmentId, newDate, newTime } = params;
+      const normalizedDate = this._normalizeDateInput(newDate);
       
-      if (!appointmentId || !newDate || !newTime) {
+      if (!appointmentId || !normalizedDate || !newTime) {
         return {
           success: false,
           message: "I need the appointment details and new date/time to reschedule."
@@ -213,13 +239,13 @@ class AppointmentService {
       
       const appointment = await dolphinAPI.rescheduleAppointment(
         appointmentId,
-        newDate,
+        normalizedDate,
         normalizedNewTime
       );
       
       return {
         success: true,
-        message: `Perfect! I've rescheduled your appointment to ${this._formatDate(newDate)} at ${this._formatTime(newTime)}. You'll receive a confirmation shortly.`,
+        message: `Perfect! I've rescheduled your appointment to ${this._formatDate(appointment.date)} at ${this._formatTime(appointment.time)}. You'll receive a confirmation shortly.`,
         appointment: {
           id: appointment.id,
           date: this._formatDate(appointment.date),
@@ -320,6 +346,7 @@ class AppointmentService {
   // Helper: Format date for display
   _formatDate(dateString) {
     const date = new Date(dateString + 'T00:00:00');
+    if (Number.isNaN(date.getTime())) return dateString;
     const options = { weekday: 'long', month: 'long', day: 'numeric' };
     return date.toLocaleDateString('en-US', options);
   }
@@ -367,6 +394,57 @@ class AppointmentService {
     }
 
     return null;
+  }
+
+  _normalizeDateInput(dateInput) {
+    if (!dateInput) return null;
+
+    const raw = dateInput.toString().trim();
+    const lower = raw.toLowerCase();
+
+    if (lower === 'today') return this._toISODate(new Date());
+    if (lower === 'tomorrow') {
+      const d = new Date();
+      d.setDate(d.getDate() + 1);
+      return this._toISODate(d);
+    }
+
+    const isoMatch = raw.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (isoMatch) return raw;
+
+    const usMatch = raw.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+    if (usMatch) {
+      const month = usMatch[1].padStart(2, '0');
+      const day = usMatch[2].padStart(2, '0');
+      const year = usMatch[3];
+      return `${year}-${month}-${day}`;
+    }
+
+    const parsed = new Date(raw);
+    if (!Number.isNaN(parsed.getTime())) return this._toISODate(parsed);
+
+    return null;
+  }
+
+  _toISODate(dateObj) {
+    const year = dateObj.getFullYear();
+    const month = String(dateObj.getMonth() + 1).padStart(2, '0');
+    const day = String(dateObj.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  }
+
+  _filterSlotsByPreferredTime(slots, preferredTime) {
+    if (!preferredTime) return slots;
+
+    const pref = preferredTime.toString().toLowerCase().trim();
+    if (!['morning', 'afternoon', 'evening'].includes(pref)) return slots;
+
+    return slots.filter(slot => {
+      const hour = parseInt(slot.time.split(':')[0], 10);
+      if (pref === 'morning') return hour >= 8 && hour < 12;
+      if (pref === 'afternoon') return hour >= 12 && hour < 17;
+      return hour >= 17;
+    });
   }
 }
 
