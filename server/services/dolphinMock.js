@@ -42,6 +42,12 @@ const availableSlots = [
 ];
 
 class DolphinMockAPI {
+  _normalizePhone(phone) {
+    if (!phone) return '';
+    const digits = phone.toString().replace(/\D/g, '');
+    if (digits.length >= 10) return digits.slice(-10);
+    return digits;
+  }
   
   async getAvailableSlots(date = null) {
     logger.info('DolphinMock: Getting available slots', { date });
@@ -88,8 +94,12 @@ class DolphinMockAPI {
   async findAppointmentByPhone(phone) {
     logger.info('DolphinMock: Finding appointment by phone', { phone });
     await this._simulateDelay(200);
-    
-    const found = appointments.filter(apt => apt.phone === phone && apt.status !== 'cancelled');
+
+    const normalizedQuery = this._normalizePhone(phone);
+    const found = appointments.filter(apt => {
+      if (apt.status === 'cancelled') return false;
+      return this._normalizePhone(apt.phone) === normalizedQuery;
+    });
     return found;
   }
   

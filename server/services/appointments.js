@@ -143,6 +143,12 @@ class AppointmentService {
       }
       
       const cleanPhone = this._cleanPhoneNumber(phone);
+      if (!cleanPhone) {
+        return {
+          success: false,
+          message: "I need a valid 10-digit phone number to look up your appointment."
+        };
+      }
       const appointments = await dolphinAPI.findAppointmentByPhone(cleanPhone);
       
       if (appointments.length === 0) {
@@ -291,9 +297,13 @@ class AppointmentService {
     if (!phone) return null;
     // Remove all non-digit characters
     const cleaned = phone.toString().replace(/\D/g, '');
-    // Must be 10 digits (US format) or return formatted version
+    // Accept 10 digits, or US country-code format (1 + 10 digits)
     if (cleaned.length === 10) {
       return `${cleaned.slice(0, 3)}-${cleaned.slice(3, 6)}-${cleaned.slice(6)}`;
+    }
+    if (cleaned.length === 11 && cleaned.startsWith('1')) {
+      const local = cleaned.slice(1);
+      return `${local.slice(0, 3)}-${local.slice(3, 6)}-${local.slice(6)}`;
     }
     return null;
   }
