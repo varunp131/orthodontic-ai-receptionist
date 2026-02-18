@@ -22,6 +22,20 @@ function stringifyToolResult(result) {
   }
 }
 
+function parseToolArguments(rawArgs) {
+  if (!rawArgs) return {};
+  if (typeof rawArgs === 'object') return rawArgs;
+  if (typeof rawArgs === 'string') {
+    try {
+      return JSON.parse(rawArgs);
+    } catch (error) {
+      logger.warn('Failed to parse tool arguments string', { rawArgs });
+      return {};
+    }
+  }
+  return {};
+}
+
 // Main webhook endpoint - Vapi sends requests here
 router.post('/webhook', async (req, res) => {
   try {
@@ -72,7 +86,7 @@ async function handleToolCalls(req, res) {
 
     for (const toolCall of toolCalls) {
       const functionName = toolCall?.function?.name;
-      const parameters = toolCall?.function?.arguments || {};
+      const parameters = parseToolArguments(toolCall?.function?.arguments);
       const toolCallId = toolCall?.id;
 
       logger.info(`Tool called: ${functionName}`, parameters);

@@ -11,7 +11,7 @@ class FAQService {
       {
         id: 1,
         category: 'hours',
-        keywords: ['hours', 'open', 'close', 'schedule', 'when', 'time'],
+        keywords: ['hours', 'office hours', 'operating hours', 'business hours', 'open', 'close', 'closing', 'opening', 'schedule', 'when are you open', 'what time'],
         question: 'What are your office hours?',
         answer: this._formatHours()
       },
@@ -90,7 +90,8 @@ class FAQService {
       
       // If category is specified, return that FAQ
       if (category) {
-        const faq = this.faqs.find(f => f.category === category);
+        const normalizedCategory = this._normalizeCategory(category);
+        const faq = this.faqs.find(f => f.category === normalizedCategory);
         if (faq) {
           return {
             success: true,
@@ -134,6 +135,13 @@ class FAQService {
   // Find best matching FAQ based on keywords
   _findBestMatch(question) {
     const lowerQuestion = question.toLowerCase();
+
+    // Direct guard for office-hours style questions.
+    if (/\b(open|close|closing|opening|hours|hour|operating|business)\b/.test(lowerQuestion)) {
+      const hoursFaq = this.faqs.find(f => f.category === 'hours');
+      if (hoursFaq) return hoursFaq;
+    }
+
     let bestMatch = null;
     let highestScore = 0;
     
@@ -155,6 +163,17 @@ class FAQService {
     
     // Only return if we have at least one keyword match
     return highestScore > 0 ? bestMatch : null;
+  }
+
+  _normalizeCategory(category) {
+    const normalized = category.toString().trim().toLowerCase().replace(/[\s-]+/g, '_');
+    const aliasMap = {
+      office_hours: 'hours',
+      operating_hours: 'hours',
+      business_hours: 'hours',
+      timings: 'hours'
+    };
+    return aliasMap[normalized] || normalized;
   }
   
   // Format office hours
